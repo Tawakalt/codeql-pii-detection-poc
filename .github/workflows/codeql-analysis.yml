@@ -34,7 +34,7 @@ jobs:
         # Use built-in query suites
         queries: security-and-quality
         # Custom configuration file (optional)
-        # config-file: ./.github/codeql/codeql-config.yml
+        config-file: ./.github/codeql/codeql-config.yml
 
     - name: Autobuild
       uses: github/codeql-action/autobuild@v3
