@@ -1,0 +1,34 @@
+name: "PII Detection Configuration"
+
+# Use default queries plus custom ones
+disable-default-queries: false
+
+# Add specific query packs and custom queries
+queries:
+  - name: Built-in security queries
+    uses: security-and-quality
+    
+  - name: Custom PII detection query
+    uses: ./.github/codeql/queries/python-pii-logging.ql
+
+# Path filters to focus scanning
+paths-ignore:
+  - "**/*.md"
+  - "**/*.txt"
+  - "**/test/**"
+  - "**/tests/**"
+  - "**/*test*"
+  - "**/__pycache__/**"
+  - "**/node_modules/**"
+
+paths:
+  - "src/**"
+  - "**/*.py"
+  - "**/*.js"
+
+# Language-specific query packs
+packs:
+  python:
+    - codeql/python-queries
+  javascript:
+    - codeql/javascript-queries
