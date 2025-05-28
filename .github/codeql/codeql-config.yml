@@ -4,11 +4,12 @@ queries:
   - uses: security-and-quality
   - uses: ./.github/codeql/queries/python-pii-logging.ql
 
-# Explicitly include paths to analyze
+# Include both Python and JavaScript source directories
 paths:
   - "src/**"
   - "config/**"
   - "**/*.py"
+  - "**/*.js"
 
 # Ignore paths we don't want to scan
 paths-ignore:
@@ -20,3 +21,11 @@ paths-ignore:
   - "**/__pycache__/**"
   - "**/node_modules/**"
   - ".github/**"
+  - "**/*.min.js"
+
+# Language-specific query packs
+packs:
+  python:
+    - codeql/python-queries
+  javascript:
+    - codeql/javascript-queries

@@ -20,9 +20,3 @@ def setup_structlog():
         cache_logger_on_first_use=True,
     )
     return structlog.get_logger()
-
-def setup_safe_structlog():
-    """Configure structlog with PII-safe processors (example)"""
-    # This could include custom processors that automatically
-    # sanitize or mask PII fields
-    return setup_structlog()

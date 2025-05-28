@@ -19,40 +19,43 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'python' ]
+        language: [ 'python', 'javascript' ]
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Debug - Check variable names in code
-      run: |
-        echo "=== Variable names in bad_examples.py ==="
-        grep -n "=" src/python/bad_examples.py | head -20
-        echo "=== Email-related patterns ==="
-        grep -n -i "email" src/python/bad_examples.py
-        echo "=== Phone-related patterns ==="
-        grep -n -i "phone" src/python/bad_examples.py
+    - name: Set up Python (for Python analysis)
+      if: matrix.language == 'python'
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
 
-    - name: Debug - Check what files CodeQL will analyze
+    - name: Set up Node.js (for JavaScript analysis)
+      if: matrix.language == 'javascript'
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install Python dependencies
+      if: matrix.language == 'python'
       run: |
-        echo "=== Repository structure ==="
-        find . -name "*.py" -type f
-        echo ""
-        echo "=== Content of Python files ==="
-        echo "--- bad_examples.py ---"
-        cat src/python/bad_examples.py | head -50
-        echo ""
-        echo "--- good_examples.py ---"
-        cat src/python/good_examples.py | head -30
+        pip install structlog
+        export PYTHONPATH="${PYTHONPATH}:${GITHUB_WORKSPACE}"
+        echo "PYTHONPATH=${PYTHONPATH}:${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+
+    - name: Install JavaScript dependencies
+      if: matrix.language == 'javascript'
+      run: |
+        npm install winston
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
-        queries: security-and-quality,./.github/codeql/queries/python-pii-logging.ql
-        setup-python-dependencies: false
-        source-root: ./
+        queries: security-and-quality,./.github/codeql/queries/python-pii-logging.ql,./.github/codeql/queries/javascript-pii-logging.ql
+        config-file: ./.github/codeql/codeql-config.yml
+        setup-python-dependencies: true
 
     - name: Autobuild
       uses: github/codeql-action/autobuild@v3
