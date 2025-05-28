@@ -25,6 +25,30 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Make subdirectory files discoverable to CodeQL
+      run: |
+        # Create symbolic links to all Python and JavaScript files in subdirectories
+        find src -name "*.py" -exec ln -sf {} . \; 2>/dev/null || true
+        find src -name "*.js" -exec ln -sf {} . \; 2>/dev/null || true
+        find config -name "*.py" -exec ln -sf {} . \; 2>/dev/null || true
+        
+        # Handle name conflicts by renaming symlinks
+        for file in $(find . -maxdepth 1 -name "*.py" -type l); do
+          target=$(readlink "$file")
+          newname="symlink_$(basename "$target")"
+          if [ "$file" != "./$newname" ]; then
+            mv "$file" "$newname" 2>/dev/null || true
+          fi
+        done
+        
+        for file in $(find . -maxdepth 1 -name "*.js" -type l); do
+          target=$(readlink "$file")
+          newname="symlink_$(basename "$target")"
+          if [ "$file" != "./$newname" ]; then
+            mv "$file" "$newname" 2>/dev/null || true
+          fi
+        done
+
     - name: Set up Python
       if: matrix.language == 'python'
       uses: actions/setup-python@v4
@@ -40,30 +64,28 @@ jobs:
     - name: Install dependencies
       run: |
         if [ "${{ matrix.language }}" == "python" ]; then
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f setup.py ]; then pip install -e .; fi
+          pip install structlog
         fi
         if [ "${{ matrix.language }}" == "javascript" ]; then
-          if [ -f package.json ]; then npm install; fi
+          npm install winston
         fi
-
-    - name: Debug - Check what CodeQL extracted
-      run: |
-        echo "Files CodeQL will analyze:"
-        /opt/hostedtoolcache/CodeQL/2.21.3/x64/codeql/codeql database ls /home/runner/work/_temp/codeql_databases/${{ matrix.language }} | head -20
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
-        queries: security-and-quality,./.github/codeql/queries/python-pii-logging.ql,./.github/codeql/queries/javascript-pii-logging.ql
-        source-root: ${{ github.workspace }}
+        queries: security-and-quality,./.github/codeql/queries/
 
     - name: Autobuild
       uses: github/codeql-action/autobuild@v3
-      
+
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
         upload: true
+    
+    - name: Cleanup symlinks
+      if: always()
+      run: |
+        rm -f symlink_*.py symlink_*.js 2>/dev/null || true
