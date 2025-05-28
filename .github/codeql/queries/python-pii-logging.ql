@@ -1,28 +1,26 @@
 /**
- * @name Simple PII Detection (Working)
- * @description Detects basic PII logging patterns that actually work
+ * @name Simple PII Logging Detection
+ * @description Finds basic PII logging patterns that actually work
  * @kind problem
  * @problem.severity warning
- * @id python/simple-pii-working
+ * @id python/simple-pii-logging
  */
 
 import python
 
-from Name n, Call c
-where 
-  // Find variables with PII-like names
+from Call c, Name n
+where
+  // Find logging calls
+  (
+    c.getFunc().(Attribute).getName() in ["info", "debug", "warning", "error", "critical"] or
+    c.getFunc().(Name).getId() = "print"
+  ) and
+  // That contain variables with PII-like names
+  c.getAnArg().getASubExpression*() = n and
   (
     n.getId().toLowerCase().matches("%email%") or
     n.getId().toLowerCase().matches("%phone%") or
-    n.getId().toLowerCase().matches("%password%") or
     n.getId().toLowerCase().matches("%ssn%") or
-    n.getId().toLowerCase().matches("%address%")
-  ) and
-  // That are used in logging calls
-  (
-    c.getFunc().(Attribute).getName() in ["info", "debug", "warning", "error"] or
-    c.getFunc().(Name).getId() = "print"
-  ) and
-  // The variable is an argument to the logging call
-  c.getAnArg().getASubExpression*() = n
-select c, "PII variable '" + n.getId() + "' used in logging call"
+    n.getId().toLowerCase().matches("%password%")
+  )
+select c, "Logging call contains PII variable: " + n.getId()
