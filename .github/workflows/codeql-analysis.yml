@@ -25,22 +25,35 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Make subdirectory files discoverable to CodeQL
+    - name: Make subdirectory files discoverable (scalable version)
       run: |
-        # Create symbolic links to all Python and JavaScript files in subdirectories
-        find src -name "*.py" -exec ln -sf {} . \; 2>/dev/null || true
-        find src -name "*.js" -exec ln -sf {} . \; 2>/dev/null || true
-        find config -name "*.py" -exec ln -sf {} . \; 2>/dev/null || true
+        echo "=== Discovering Python files ==="
+        PYTHON_FILES=$(find src -name "*.py" | wc -l)
+        echo "Found $PYTHON_FILES Python files in subdirectories"
         
-        # Handle name conflicts by renaming symlinks
-        for file in $(find . -maxdepth 1 -name "*.py" -type l); do
-          target=$(readlink "$file")
-          newname="symlink_$(basename "$target")"
-          if [ "$file" != "./$newname" ]; then
-            mv "$file" "$newname" 2>/dev/null || true
-          fi
+        # Create analysis directory to avoid root clutter
+        mkdir -p analysis_files
+        
+        # Process Python files with better import handling
+        find src -name "*.py" | while read -r file; do
+          basename_file=$(basename "$file")
+          target_name="analysis_files/copied_${basename_file}"
+          
+          # Copy and fix common import patterns
+          cp "$file" "$target_name"
+          
+          # Handle multiple import patterns your project uses
+          sed -i 's/from config\./# from config./' "$target_name" 2>/dev/null || true
+          sed -i 's/from utils\./# from utils./' "$target_name" 2>/dev/null || true
+          sed -i 's/from shared\./# from shared./' "$target_name" 2>/dev/null || true
+          # Add your project's specific patterns here
+          
+          # Create symlink in root pointing to analysis file
+          ln -sf "analysis_files/$(basename "$target_name")" "symlink_${basename_file}" 2>/dev/null || true
         done
         
+        # Handle JavaScript (simpler, no import issues)
+        find src -name "*.js" -exec ln -sf {} . \; 2>/dev/null || true
         for file in $(find . -maxdepth 1 -name "*.js" -type l); do
           target=$(readlink "$file")
           newname="symlink_$(basename "$target")"
@@ -48,6 +61,10 @@ jobs:
             mv "$file" "$newname" 2>/dev/null || true
           fi
         done
+        
+        echo "=== Files prepared for analysis ==="
+        echo "Python files: $(ls -1 symlink_*.py 2>/dev/null | wc -l)"
+        echo "JavaScript files: $(ls -1 symlink_*.js 2>/dev/null | wc -l)"
 
     - name: Set up Python
       if: matrix.language == 'python'
@@ -70,11 +87,36 @@ jobs:
           npm install winston
         fi
 
+    - name: Diagnostic - What files is CodeQL actually analyzing?
+      if: matrix.language == 'python'
+      run: |
+        echo "=== Files in root directory after processing ==="
+        ls -la *.py | head -20
+        
+        echo "=== Content sample from copied Python file ==="
+        if [ -f symlink_bad_examples.py ]; then
+          echo "First 20 lines of symlink_bad_examples.py:"
+          head -20 symlink_bad_examples.py
+          echo ""
+          echo "PII patterns in this file:"
+          grep -n "user_email\|logger\.info\|struct_logger" symlink_bad_examples.py | head -10
+        else
+          echo "symlink_bad_examples.py not found"
+        fi
+        
+        echo "=== Comparing root file vs subdirectory file ==="
+        echo "Root file PII patterns:"
+        grep -n "user_email\|logger\.info" has_pii.py 2>/dev/null | head -5 || echo "No patterns in has_pii.py"
+        
+        echo "Subdirectory file PII patterns:"  
+        grep -n "user_email\|logger\.info" src/python/bad_examples.py 2>/dev/null | head -5 || echo "No patterns in original file"
+
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
         queries: security-and-quality,./.github/codeql/queries/
+        config-file: ./.github/codeql/codeql-config.yml
 
     - name: Autobuild
       uses: github/codeql-action/autobuild@v3
