@@ -25,41 +25,43 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Python (for Python analysis)
+    - name: Set up Python
       if: matrix.language == 'python'
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.x'
 
-    - name: Set up Node.js (for JavaScript analysis)
+    - name: Set up Node.js
       if: matrix.language == 'javascript'
       uses: actions/setup-node@v3
       with:
         node-version: '18'
 
-    - name: Install Python dependencies
-      if: matrix.language == 'python'
+    - name: Install dependencies
       run: |
-        pip install structlog
-        export PYTHONPATH="${PYTHONPATH}:${GITHUB_WORKSPACE}"
-        echo "PYTHONPATH=${PYTHONPATH}:${GITHUB_WORKSPACE}" >> $GITHUB_ENV
+        if [ "${{ matrix.language }}" == "python" ]; then
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f setup.py ]; then pip install -e .; fi
+        fi
+        if [ "${{ matrix.language }}" == "javascript" ]; then
+          if [ -f package.json ]; then npm install; fi
+        fi
 
-    - name: Install JavaScript dependencies
-      if: matrix.language == 'javascript'
+    - name: Debug - Check what CodeQL extracted
       run: |
-        npm install winston
+        echo "Files CodeQL will analyze:"
+        /opt/hostedtoolcache/CodeQL/2.21.3/x64/codeql/codeql database ls /home/runner/work/_temp/codeql_databases/${{ matrix.language }} | head -20
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
         queries: security-and-quality,./.github/codeql/queries/python-pii-logging.ql,./.github/codeql/queries/javascript-pii-logging.ql
-        config-file: ./.github/codeql/codeql-config.yml
-        setup-python-dependencies: true
+        source-root: ${{ github.workspace }}
 
     - name: Autobuild
       uses: github/codeql-action/autobuild@v3
-
+      
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
