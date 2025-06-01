@@ -1,0 +1,73 @@
+name: Semgrep PII Detection
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/*.py'
+  push:
+    branches: [main, untroduce_semgrep]
+    paths:
+      - '**/*.py'
+
+jobs:
+  semgrep:
+    name: PII Detection with Semgrep
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install Semgrep
+        run: |
+          python -m pip install --upgrade pip
+          pip install semgrep
+      
+      - name: Run Semgrep scan
+        run: |
+          # Run scan with JSON and SARIF output
+          semgrep --config=.semgrep/rules/pii-logging-rules.yml \
+                  --json --output=semgrep-results.json \
+                  --sarif --output=semgrep.sarif \
+                  . || true
+      
+      - name: Process results
+        run: |
+          if [ -f semgrep-results.json ]; then
+            FINDINGS=$(jq '. | length' semgrep-results.json)
+            echo "## 🔍 Semgrep PII Detection Results" >> $GITHUB_STEP_SUMMARY
+            echo "**Findings:** $FINDINGS potential PII issues" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ $FINDINGS -gt 0 ]; then
+              echo "### Issues Found:" >> $GITHUB_STEP_SUMMARY
+              jq -r '.[] | "- **" + .check_id + "** in `" + .path + ":" + (.start.line | tostring) + "` - " + .message' semgrep-results.json >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ **Action Required:** Review and fix PII logging issues above." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "✅ **No PII issues detected** - Great job!" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "No results file generated" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Upload SARIF to Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep-pii
+        continue-on-error: true
+      
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-pii-results
+          path: |
+            semgrep-results.json
+            semgrep.sarif
+        continue-on-error: true
