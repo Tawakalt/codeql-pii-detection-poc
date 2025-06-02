@@ -1,0 +1,97 @@
+rules:
+  # Email variable detection
+  - id: email-variables-in-logging
+    patterns:
+      - pattern-either:
+          - pattern: logging.$METHOD(..., $VAR, ...)
+          - pattern: logger.$METHOD(..., $VAR, ...)
+          - pattern: log.$METHOD(..., $VAR, ...)
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '.*email.*'
+    message: "Email variable '$VAR' detected in logging"
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: pii-detection
+
+  # SSN detection  
+  - id: ssn-variables-in-logging
+    patterns:
+      - pattern-either:
+          - pattern: logging.$METHOD(..., $VAR, ...)
+          - pattern: logger.$METHOD(..., $VAR, ...)
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '.*(ssn|social_security).*'
+    message: "SSN variable '$VAR' detected in logging"
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: pii-detection
+
+  # Phone number detection
+  - id: phone-variables-in-logging
+    patterns:
+      - pattern-either:
+          - pattern: logging.$METHOD(..., $VAR, ...)
+          - pattern: logger.$METHOD(..., $VAR, ...)
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: '.*phone.*'
+    message: "Phone variable '$VAR' detected in logging"
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: pii-detection
+
+  # Structlog PII keywords
+  - id: structlog-pii-keywords
+    patterns:
+      - pattern-either:
+          - pattern: structlog.get_logger().$METHOD(..., $KEY=$VAL, ...)
+          - pattern: $LOGGER.$METHOD(..., $KEY=$VAL, ...)
+      - metavariable-regex:
+          metavariable: $KEY
+          regex: '.*(email|ssn|phone|address|credit_card).*'
+    message: "PII keyword '$KEY' in structlog"
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: structlog-pii
+
+  # Direct PII in f-strings
+  - id: pii-in-f-strings
+    pattern-either:
+      - pattern: logging.$METHOD(f"...$...{$VAR.email}$...")
+      - pattern: logging.$METHOD(f"...$...{$VAR.ssn}$...")
+      - pattern: logging.$METHOD(f"...$...{$VAR.phone}$...")
+    message: "Direct PII attribute in f-string logging"
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: direct-pii
+
+  # Password/credential detection
+  - id: credentials-in-logging
+    patterns:
+      - pattern-either:
+          - pattern: logging.$METHOD(..., $PASSWORD, ...)
+          - pattern: logger.$METHOD(..., $PASSWORD, ...)
+      - metavariable-regex:
+          metavariable: $PASSWORD
+          regex: '.*(password|pwd|token|secret|api_key).*'
+    message: "CRITICAL: Credential variable '$PASSWORD' in logging"
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: credential-leak
+
+  # Email address regex pattern
+  - id: direct-email-address
+    pattern-regex: 'logging\.(info|error|warning|debug)\([^)]*[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^)]*\)'
+    message: "Direct email address in logging statement"
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: direct-email

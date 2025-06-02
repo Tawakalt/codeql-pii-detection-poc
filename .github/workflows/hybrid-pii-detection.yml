@@ -1,0 +1,115 @@
+name: Hybrid PII Detection (Semgrep + CodeQL)
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly full scan
+
+jobs:
+  semgrep-scan:
+    name: Semgrep Pattern Detection
+    runs-on: ubuntu-latest
+    outputs:
+      semgrep-findings: ${{ steps.results.outputs.findings }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Semgrep
+        run: |
+          # Run scan with JSON and SARIF output
+          semgrep --config=.semgrep/rules/pii-logging-rules.yml \
+                  --json --output=semgrep-results.json \
+                  --sarif --output=semgrep.sarif \
+                  . || true
+      
+      - name: Process Semgrep results
+        id: results
+        run: |
+          if [ -f semgrep.sarif ]; then
+            jq '.runs[0].results' semgrep.sarif > semgrep-findings.json
+            echo "findings=$(jq '. | length' semgrep-findings.json)" >> $GITHUB_OUTPUT
+          else
+            echo "findings=0" >> $GITHUB_OUTPUT
+            echo "[]" > semgrep-findings.json
+          fi
+      
+      - name: Upload Semgrep results
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-results
+          path: |
+            semgrep-findings.json
+            semgrep.sarif
+
+  codeql-scan:
+    name: CodeQL Data Flow Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    outputs:
+      codeql-findings: ${{ steps.results.outputs.findings }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          queries: ./.github/codeql/queries/python-pii-logging.ql
+      
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        id: codeql-analysis
+      
+      - name: Process CodeQL results
+        id: results
+        run: |
+          # CodeQL results are uploaded to Security tab
+          # Count findings from the analysis
+          echo "findings=pending" >> $GITHUB_OUTPUT
+
+  merge-and-report:
+    name: Merge Results and Generate Report
+    runs-on: ubuntu-latest
+    needs: [semgrep-scan, codeql-scan]
+    if: always()
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Semgrep results
+        uses: actions/download-artifact@v4
+        with:
+          name: semgrep-results
+          path: ./results
+        continue-on-error: true
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Generate combined report
+        run: |
+          python scripts/generate-report.py \
+            --semgrep-results ./results/semgrep-findings.json \
+            --output-format markdown > combined-report.md
+      
+      - name: Post combined results
+        run: |
+          echo "## 🔍 Hybrid PII Detection Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat combined-report.md >> $GITHUB_STEP_SUMMARY
+      
+      - name: Upload combined report
+        uses: actions/upload-artifact@v4
+        with:
+          name: hybrid-pii-report
+          path: combined-report.md
