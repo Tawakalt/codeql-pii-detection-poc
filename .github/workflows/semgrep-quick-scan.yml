@@ -5,7 +5,7 @@ on:
     paths:
       - '**/*.py'
   push:
-    branches: [main, untroduce_semgrep]
+    branches: [main]
     paths:
       - '**/*.py'
 
@@ -26,12 +26,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install semgrep
       
-      - name: Run Semgrep scan
+      - name: Run Semgrep scan for JSON results
         run: |
-          # Run scan with JSON and SARIF output
+          # First run: Generate JSON output
           semgrep --config=.semgrep/rules/pii-logging-rules.yml \
-                  --json --output=semgrep-results.json \
-                  --sarif --output=semgrep.sarif \
+                  --json \
+                  --output=semgrep-results.json \
+                  . || true
+      
+      - name: Run Semgrep scan for SARIF results
+        run: |
+          # Second run: Generate SARIF output
+          semgrep --config=.semgrep/rules/pii-logging-rules.yml \
+                  --sarif \
+                  --output=semgrep.sarif \
                   . || true
       
       - name: Process results
@@ -51,7 +59,7 @@ jobs:
               echo "✅ **No PII issues detected** - Great job!" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo "No results file generated" >> $GITHUB_STEP_SUMMARY
+            echo "❌ No results file generated - check Semgrep execution" >> $GITHUB_STEP_SUMMARY
           fi
       
       - name: Upload SARIF to Security tab
@@ -62,7 +70,7 @@ jobs:
           category: semgrep-pii
         continue-on-error: true
       
-      - name: Upload results
+      - name: Upload results artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
